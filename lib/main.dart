@@ -107,25 +107,42 @@ class _EpisodeListPageState extends State<EpisodeListPage> {
   }
 
   Future<void> fetchEpisodes() async {
-    final response = await http.get(Uri.parse(widget.characterUrl));
+    try {
+      final response = await http
+          .get(Uri.parse(widget.characterUrl))
+          .timeout(Duration(seconds: 10));
 
-    if (response.statusCode == 200) {
-      final characterData = json.decode(response.body);
-      List<dynamic> episodeUrls = characterData['episode'];
+      if (response.statusCode == 200) {
+        final characterData = json.decode(response.body);
+        List<dynamic> episodeUrls = characterData['episode'];
 
-      for (String episodeUrl in episodeUrls) {
-        final episodeResponse = await http.get(Uri.parse(episodeUrl));
+        List<Future> episodeFutures = episodeUrls.map((url) async {
+          try {
+            final episodeResponse =
+                await http.get(Uri.parse(url)).timeout(Duration(seconds: 10));
 
-        if (episodeResponse.statusCode == 200) {
-          final episodeData = json.decode(episodeResponse.body);
+            if (episodeResponse.statusCode == 200) {
+              return json.decode(episodeResponse.body);
+            }
+          } catch (e) {
+            print('Error fetching episode: $e');
+          }
+          return null;
+        }).toList();
 
+        final fetchedEpisodes = await Future.wait(episodeFutures);
+
+        if (mounted) {
           setState(() {
-            episodes.add(episodeData);
+            episodes =
+                fetchedEpisodes.where((episode) => episode != null).toList();
           });
         }
+      } else {
+        throw Exception('Error al cargar los episodios del personaje');
       }
-    } else {
-      throw Exception('Error al cargar los episodios del personaje');
+    } catch (e) {
+      print('Error fetching character data: $e');
     }
   }
 
